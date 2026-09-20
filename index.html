@@ -297,7 +297,7 @@
             </div>
         </div>
 
-        <!-- ب) واجهة المطبخ / فريق العمل -->
+        <!-- ب) واجهة المطبخ / فريق العمل (مع التقسيم الجديد للطلبات) -->
         <div id="view-kitchen" class="section-view">
             <div class="card">
                 <h3><i class="fa-solid fa-utensils"></i> شاشة تجهيز واستلام الطلبات (فريق العمل)</h3>
@@ -308,7 +308,7 @@
             </div>
         </div>
 
-        <!-- ج) لوحة التحكم الشاملة (مع إرفاق الصور من المعرض) -->
+        <!-- ج) لوحة التحكم الشاملة -->
         <div id="view-admin" class="section-view">
             <div class="card" style="border: 2px solid var(--danger);">
                 <h3><i class="fa-solid fa-shield-halved"></i> لوحة التحكم الشاملة (إدارة كاملة)</h3>
@@ -533,6 +533,7 @@
                 const querySnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "orders"));
                 let sequentialNumber = querySnapshot.size + 1;
 
+                // تم تحديد المصدر هنا على أنه طلب محلي (من الكاشير)
                 await window.dbFns.addDoc(window.dbFns.collection(window.db, "orders"), {
                     orderNumber: sequentialNumber,
                     tableNumber: tableNum,
@@ -540,6 +541,7 @@
                     kitchenNotes: kitchenNotes || "لا توجد ملاحظات",
                     total: totalAmount,
                     status: "قيد التجهيز",
+                    source: "local", 
                     timestamp: new Date().toLocaleString()
                 });
 
@@ -570,6 +572,7 @@
             document.getElementById('invoice-modal').style.display = 'none';
         }
 
+        // دالة استماع المطبخ مع تقسيم الطلبات (محلية و الإنترنت)
         function listenToKitchenOrders() {
             const container = document.getElementById('kitchen-orders-container');
             window.dbFns.onSnapshot(window.dbFns.collection(window.db, "orders"), (snapshot) => {
@@ -579,26 +582,48 @@
                 }
                 previousOrdersCount = currentCount;
 
-                let html = '';
+                let localHtml = '<h4 style="color:var(--primary); margin:10px 0 5px 0;">📍 طلبات محلية (من الكاشير)</h4>';
+                let onlineHtml = '<h4 style="color:var(--warning); margin:20px 0 5px 0;">🌐 الطلبات من الإنترنت</h4>';
+                
+                let hasLocal = false;
+                let hasOnline = false;
+
                 snapshot.forEach((docSnap) => {
                     let order = docSnap.data();
                     let orderId = docSnap.id;
+                    
                     if(order.status !== "مكتمل") {
                         let itemsHtml = order.items.map(i => `<li>${i.name} — (${i.customOption})</li>`).join('');
-                        html += `
-                            <div class="card" style="border: 1px solid var(--warning); margin-bottom:15px;">
-                                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                                    <strong>الطلب: #${order.orderNumber} | الطاولة: ${order.tableNumber}</strong>
-                                    <span class="badge" style="background:var(--warning); color:#000;">${order.status}</span>
+                        let sourceLabel = order.source === "online" ? "الطلبات من الإنترنت" : "طلبات محلية (من الكاشير)";
+                        let badgeColor = order.source === "online" ? "var(--warning)" : "var(--primary)";
+
+                        let cardTemplate = `
+                            <div class="card" style="border: 1px solid ${badgeColor}; margin-bottom:12px;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:5px;">
+                                    <strong>الطلب: #${order.orderNumber} | الطاولة / العميل: ${order.tableNumber}</strong>
+                                    <span class="badge" style="background:${badgeColor}; color:#000;">${sourceLabel}</span>
                                 </div>
                                 <ul style="margin: 10px 20px; font-size:0.9rem;">${itemsHtml}</ul>
-                                <p style="color:var(--danger); font-size:0.85rem; margin-top:5px;"><strong>ملاحظات المطبخ:</strong> ${order.kitchenNotes}</p>
+                                <p style="color:var(--danger); font-size:0.85rem; margin-top:5px;"><strong>ملاحظات:</strong> ${order.kitchenNotes}</p>
                                 <button class="btn btn-success" style="margin-top:10px; padding:6px;" onclick="completeOrder('${orderId}')">تحديد كـ (تم الاستلام / مكتمل)</button>
                             </div>
                         `;
+
+                        if(order.source === "online") {
+                            hasOnline = true;
+                            onlineHtml += cardTemplate;
+                        } else {
+                            hasLocal = true;
+                            localHtml += cardTemplate;
+                        }
                     }
                 });
-                container.innerHTML = html || '<p style="color:var(--text-secondary);">لا توجد طلبات معلقة حالياً.</p>';
+
+                let finalDisplay = "";
+                if(hasLocal) finalDisplay += localHtml;
+                if(hasOnline) finalDisplay += onlineHtml;
+
+                container.innerHTML = finalDisplay || '<p style="color:var(--text-secondary);">لا توجد طلبات معلقة حالياً.</p>';
             });
         }
 
@@ -636,10 +661,11 @@
             orderSnapshot.forEach((docSnap) => {
                 let o = docSnap.data();
                 totalRevenue += (o.total || 0);
+                let sourceBadgeText = o.source === "online" ? "🌐 إنترنت" : "📍 محلي";
                 historyHtml += `
                     <div style="background:var(--bg-color); padding:10px; border-radius:8px; margin-bottom:8px; font-size:0.85rem;">
                         <div style="display:flex; justify-content:space-between; font-weight:bold;">
-                            <span>طلب #${o.orderNumber} - الطاولة: ${o.tableNumber}</span>
+                            <span>طلب #${o.orderNumber} (${sourceBadgeText}) - العميل: ${o.tableNumber}</span>
                             <span style="color:var(--success);">${o.total} ر.س</span>
                         </div>
                         <p style="color:var(--text-secondary);">${o.timestamp} | الحالة: ${o.status}</p>
