@@ -533,7 +533,6 @@
                 const querySnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "orders"));
                 let sequentialNumber = querySnapshot.size + 1;
 
-                // تم تحديد المصدر هنا على أنه طلب محلي (من الكاشير)
                 await window.dbFns.addDoc(window.dbFns.collection(window.db, "orders"), {
                     orderNumber: sequentialNumber,
                     tableNumber: tableNum,
@@ -572,7 +571,6 @@
             document.getElementById('invoice-modal').style.display = 'none';
         }
 
-        // دالة استماع المطبخ مع تقسيم الطلبات (محلية و الإنترنت)
         function listenToKitchenOrders() {
             const container = document.getElementById('kitchen-orders-container');
             window.dbFns.onSnapshot(window.dbFns.collection(window.db, "orders"), (snapshot) => {
