@@ -571,6 +571,70 @@
             document.getElementById('invoice-modal').style.display = 'none';
         }
 
+        async function completeOrder(orderId) {
+            try {
+                await window.dbFns.updateDoc(window.dbFns.doc(window.db, "orders", orderId), {
+                    status: "مكتمل"
+                });
+            } catch(e) {
+                alert("خطأ أثناء تحديث حالة الطلب: " + e.message);
+            }
+        }
+
+        async function deleteProduct(productId) {
+            if(confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
+                try {
+                    await window.dbFns.deleteDoc(window.dbFns.doc(window.db, "products", productId));
+                    alert("تم حذف المنتج بنجاح");
+                    loadAdminData();
+                } catch(e) {
+                    alert("خطأ في الحذف: " + e.message);
+                }
+            }
+        }
+
+        async function loadAdminData() {
+            try {
+                const ordersSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "orders"));
+                let totalOrders = ordersSnapshot.size;
+                let totalRevenue = 0;
+                let historyHtml = '';
+
+                ordersSnapshot.forEach(docSnap => {
+                    let order = docSnap.data();
+                    totalRevenue += Number(order.total || 0);
+                    let itemsNames = order.items ? order.items.map(i => i.name).join(', ') : '';
+                    historyHtml += `
+                        <div style="background:var(--bg-color); padding:10px; border-radius:8px; margin-bottom:8px; font-size:0.85rem;">
+                            <strong>طلب #${order.orderNumber}</strong> | العميل: ${order.tableNumber} | المجموع: ${order.total} ر.س | الحالة: <span style="color:${order.status === 'مكتمل' ? 'var(--success)' : 'var(--warning)'}">${order.status}</span>
+                            <div style="color:var(--text-secondary); margin-top:3px;">المنتجات: ${itemsNames}</div>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('admin-total-orders').innerText = totalOrders;
+                document.getElementById('admin-total-revenue').innerText = totalRevenue + " ر.س";
+                document.getElementById('admin-all-orders-history').innerHTML = historyHtml || '<p style="color:var(--text-secondary);">لا توجد طلبات سابقة مسجلة.</p>';
+
+                const productsSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "products"));
+                let productsHtml = '';
+                productsSnapshot.forEach(docSnap => {
+                    let p = docSnap.data();
+                    let pId = docSnap.id;
+                    productsHtml += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:10px; border-radius:8px; margin-bottom:8px;">
+                            <span>${p.name} — ${p.price} ر.س</span>
+                            <button class="btn btn-danger" style="width:auto; padding:5px 10px; font-size:0.8rem;" onclick="deleteProduct('${pId}')">حذف</button>
+                        </div>
+                    `;
+                });
+                document.getElementById('admin-products-list').innerHTML = productsHtml || '<p style="color:var(--text-secondary);">لا توجد منتجات حالياً.</p>';
+
+            } catch(e) {
+                console.log("خطأ في جلب بيانات الإدارة:", e);
+            }
+        }
+
         function listenToKitchenOrders() {
             const container = document.getElementById('kitchen-orders-container');
             window.dbFns.onSnapshot(window.dbFns.collection(window.db, "orders"), (snapshot) => {
@@ -621,72 +685,8 @@
                 if(hasLocal) finalDisplay += localHtml;
                 if(hasOnline) finalDisplay += onlineHtml;
                 
-                container.innerHTML = finalDisplay || '<p>لا توجد طلبات قيد التجهيز حالياً.</p>';
+                container.innerHTML = finalDisplay || '<p style="color:var(--text-secondary);">لا توجد طلبات جديدة قيد التجهيز حالياً.</p>';
             });
-        }
-
-        async function completeOrder(orderId) {
-            try {
-                await window.dbFns.updateDoc(window.dbFns.doc(window.db, "orders", orderId), {
-                    status: "مكتمل"
-                });
-            } catch(e) {
-                alert("خطأ أثناء تحديث حالة الطلب: " + e.message);
-            }
-        }
-
-        async function loadAdminData() {
-            try {
-                const ordersSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "orders"));
-                let totalOrders = ordersSnapshot.size;
-                let totalRevenue = 0;
-                let historyHtml = '';
-
-                ordersSnapshot.forEach((docSnap) => {
-                    let order = docSnap.data();
-                    if(order.total) {
-                        totalRevenue += Number(order.total);
-                    }
-                    historyHtml += `
-                        <div style="background:var(--bg-color); padding:10px; border-radius:8px; margin-bottom:8px; font-size:0.85rem; border:1px solid var(--border-color);">
-                            <strong>الطلب #${order.orderNumber}</strong> — العميل: ${order.tableNumber} — المجموع: ${order.total} ر.س — الحالة: <span style="color:${order.status === 'مكتمل' ? 'var(--success)' : 'var(--warning)'};">${order.status}</span>
-                        </div>
-                    `;
-                });
-
-                document.getElementById('admin-total-orders').innerText = totalOrders;
-                document.getElementById('admin-total-revenue').innerText = totalRevenue + " ر.س";
-                document.getElementById('admin-all-orders-history').innerHTML = historyHtml || '<p style="font-size:0.85rem; color:var(--text-secondary);">لا توجد طلبات مسجلة بعد.</p>';
-
-                const productsSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "products"));
-                let prodHtml = '';
-                productsSnapshot.forEach((docSnap) => {
-                    let p = docSnap.data();
-                    let pId = docSnap.id;
-                    prodHtml += `
-                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 12px; border-radius:8px; margin-bottom:6px; font-size:0.9rem;">
-                            <span>${p.name} (${p.price} ر.س)</span>
-                            <button class="btn btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;" onclick="deleteProduct('${pId}')">حذف</button>
-                        </div>
-                    `;
-                });
-                document.getElementById('admin-products-list').innerHTML = prodHtml || '<p style="font-size:0.85rem; color:var(--text-secondary);">لا توجد منتجات.</p>';
-
-            } catch(e) {
-                console.log("خطأ في جلب بيانات لوحة التحكم:", e);
-            }
-        }
-
-        async function deleteProduct(productId) {
-            if(confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
-                try {
-                    await window.dbFns.deleteDoc(window.dbFns.doc(window.db, "products", productId));
-                    alert("تم حذف المنتج بنجاح.");
-                    loadAdminData();
-                } catch(e) {
-                    alert("خطأ في الحذف: " + e.message);
-                }
-            }
         }
     </script>
 </body>
