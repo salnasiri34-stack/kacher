@@ -620,8 +620,8 @@
                 let finalDisplay = "";
                 if(hasLocal) finalDisplay += localHtml;
                 if(hasOnline) finalDisplay += onlineHtml;
-
-                container.innerHTML = finalDisplay || '<p style="color:var(--text-secondary);">لا توجد طلبات معلقة حالياً.</p>';
+                
+                container.innerHTML = finalDisplay || '<p>لا توجد طلبات قيد التجهيز حالياً.</p>';
             });
         }
 
@@ -630,56 +630,62 @@
                 await window.dbFns.updateDoc(window.dbFns.doc(window.db, "orders", orderId), {
                     status: "مكتمل"
                 });
-            } catch(e) { alert(e.message); }
+            } catch(e) {
+                alert("خطأ أثناء تحديث حالة الطلب: " + e.message);
+            }
         }
 
         async function loadAdminData() {
-            const prodSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "products"));
-            let prodHtml = '';
-            prodSnapshot.forEach((docSnap) => {
-                let p = docSnap.data();
-                let id = docSnap.id;
-                prodHtml += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:10px; border-radius:8px; margin-bottom:8px;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <img src="${p.image || 'https://via.placeholder.com/150'}" style="width:40px; height:40px; object-fit:cover; border-radius:6px;">
-                            <span>${p.name} — ${p.price} ر.س</span>
+            try {
+                const ordersSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "orders"));
+                let totalOrders = ordersSnapshot.size;
+                let totalRevenue = 0;
+                let historyHtml = '';
+
+                ordersSnapshot.forEach((docSnap) => {
+                    let order = docSnap.data();
+                    if(order.total) {
+                        totalRevenue += Number(order.total);
+                    }
+                    historyHtml += `
+                        <div style="background:var(--bg-color); padding:10px; border-radius:8px; margin-bottom:8px; font-size:0.85rem; border:1px solid var(--border-color);">
+                            <strong>الطلب #${order.orderNumber}</strong> — العميل: ${order.tableNumber} — المجموع: ${order.total} ر.س — الحالة: <span style="color:${order.status === 'مكتمل' ? 'var(--success)' : 'var(--warning)'};">${order.status}</span>
                         </div>
-                        <button class="btn btn-danger" style="width:auto; padding:5px 10px; font-size:0.8rem;" onclick="deleteProduct('${id}')">حذف</button>
-                    </div>
-                `;
-            });
-            document.getElementById('admin-products-list').innerHTML = prodHtml || '<p>لا توجد منتجات.</p>';
+                    `;
+                });
 
-            const orderSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "orders"));
-            let totalOrders = orderSnapshot.size;
-            let totalRevenue = 0;
-            let historyHtml = '';
+                document.getElementById('admin-total-orders').innerText = totalOrders;
+                document.getElementById('admin-total-revenue').innerText = totalRevenue + " ر.س";
+                document.getElementById('admin-all-orders-history').innerHTML = historyHtml || '<p style="font-size:0.85rem; color:var(--text-secondary);">لا توجد طلبات مسجلة بعد.</p>';
 
-            orderSnapshot.forEach((docSnap) => {
-                let o = docSnap.data();
-                totalRevenue += (o.total || 0);
-                let sourceBadgeText = o.source === "online" ? "🌐 إنترنت" : "📍 محلي";
-                historyHtml += `
-                    <div style="background:var(--bg-color); padding:10px; border-radius:8px; margin-bottom:8px; font-size:0.85rem;">
-                        <div style="display:flex; justify-content:space-between; font-weight:bold;">
-                            <span>طلب #${o.orderNumber} (${sourceBadgeText}) - العميل: ${o.tableNumber}</span>
-                            <span style="color:var(--success);">${o.total} ر.س</span>
+                const productsSnapshot = await window.dbFns.getDocs(window.dbFns.collection(window.db, "products"));
+                let prodHtml = '';
+                productsSnapshot.forEach((docSnap) => {
+                    let p = docSnap.data();
+                    let pId = docSnap.id;
+                    prodHtml += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 12px; border-radius:8px; margin-bottom:6px; font-size:0.9rem;">
+                            <span>${p.name} (${p.price} ر.س)</span>
+                            <button class="btn btn-danger" style="width:auto; padding:4px 10px; font-size:0.8rem;" onclick="deleteProduct('${pId}')">حذف</button>
                         </div>
-                        <p style="color:var(--text-secondary);">${o.timestamp} | الحالة: ${o.status}</p>
-                    </div>
-                `;
-            });
+                    `;
+                });
+                document.getElementById('admin-products-list').innerHTML = prodHtml || '<p style="font-size:0.85rem; color:var(--text-secondary);">لا توجد منتجات.</p>';
 
-            document.getElementById('admin-total-orders').innerText = totalOrders;
-            document.getElementById('admin-total-revenue').innerText = `${totalRevenue} ر.س`;
-            document.getElementById('admin-all-orders-history').innerHTML = historyHtml || '<p>لا توجد طلبات مسجلة بعد.</p>';
+            } catch(e) {
+                console.log("خطأ في جلب بيانات لوحة التحكم:", e);
+            }
         }
 
-        async function deleteProduct(id) {
+        async function deleteProduct(productId) {
             if(confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
-                await window.dbFns.deleteDoc(window.dbFns.doc(window.db, "products", id));
-                loadAdminData();
+                try {
+                    await window.dbFns.deleteDoc(window.dbFns.doc(window.db, "products", productId));
+                    alert("تم حذف المنتج بنجاح.");
+                    loadAdminData();
+                } catch(e) {
+                    alert("خطأ في الحذف: " + e.message);
+                }
             }
         }
     </script>
